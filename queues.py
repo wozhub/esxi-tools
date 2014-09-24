@@ -106,6 +106,7 @@ class CopyQueue:
                         raise
                     else:
                         copia.h.fila_compresion.cargar(copia)
+                        copia.g.borrarSnapshot("respaldo")
                     finally:
                         self.aCopiar.task_done()
 

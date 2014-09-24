@@ -36,6 +36,19 @@ class Administrador:
         for host in self.config.creds:
             self.hosts.append(Host(self, host))
 
+    def respaldar(self):
+        self.logger.debug(self)
+
+        for h in self.hosts:
+            for g in h.guests:
+                c = Copia(self, g)
+                h.fila_copia.cargar(c)
+
+        for h in self.hosts:
+            h.fila_copia.procesar()
+
+        self.fila_compresion.procesar()
+
 
 class Host:
     def __init__(self, admin, host):
@@ -63,6 +76,20 @@ class Host:
 
     def __repr__(self):
         return "%s (%s)" % (self.name, self.__class__)
+
+    def respaldar(self):
+        self.logger.debug(self)
+
+        for g in self.guests:
+            c = Copia(self, g)
+            self.fila_copia.cargar(c)
+
+        self.fila_copia.procesar()
+        self.fila_compresion.procesar()
+
+    def crearSnapshot(self, desc):
+        esxi = self.host.conexion_viserver()
+        for path in esxi.get_registered_vms():
 
     def conexion_viserver(self):
         self.logger.debug(self)
