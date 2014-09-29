@@ -87,10 +87,6 @@ class Host:
         self.fila_copia.procesar()
         self.fila_compresion.procesar()
 
-    def crearSnapshot(self, desc):
-        esxi = self.host.conexion_viserver()
-        for path in esxi.get_registered_vms():
-
     def conexion_viserver(self):
         self.logger.debug(self)
         esxi = VIServer()
