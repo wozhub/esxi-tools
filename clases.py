@@ -2,6 +2,7 @@
 
 from sh import sshpass
 from pysphere import VIServer
+from time import time
 
 from queues import Copia, CopyQueue, CompressQueue
 from utiles import obtenerLogger
@@ -14,6 +15,7 @@ class Configuracion:
         self.creds = config['creds']
         self.logfile = config['log_esxitools']
         self.logpysphere = config['log_pysphere']
+        self.dsa_key = config['dsa_key']
 
     def buscarCredenciales(self, host):
         return self.creds[host]
@@ -22,12 +24,9 @@ class Configuracion:
 class Administrador:
     def __init__(self, config):
         self.config = config
-
         self.logger = obtenerLogger(self.config.logfile)
         self.logger.debug('Creando Administrador')
-
         self.fila_compresion = CompressQueue(self)
-
         self._configurarHosts()
 
     def _configurarHosts(self):
@@ -35,6 +34,10 @@ class Administrador:
         self.hosts = []
         for host in self.config.creds:
             self.hosts.append(Host(self, host))
+
+        #instalo la key para conectarme sin password
+        for host in self.hosts:
+            host.instalarKey(self.config[])
 
     def respaldar(self):
         self.logger.debug(self)
@@ -48,6 +51,52 @@ class Administrador:
             h.fila_copia.procesar()
 
         self.fila_compresion.procesar()
+
+    def buscarGuest(self, nombre):
+        for h in self.hosts:
+            for g in h.guests:
+                if g.name == nombre:
+                    return g
+
+    def buscarHost(self, nombre):
+        for h in self.hosts:
+            if h.name == nombre:
+                return h
+
+    def migrar(self, nombre_vm, host_destino):
+        g = self.buscarGuest(nombre_vm)
+        h_dest = self.buscarHost(host_destino)
+
+        estado = g.estado()
+        if estado == 'POWERED ON':  # apaga la vm en origen
+            g.apagar(sync_run=True)
+
+        # copia los archivos
+        ssh = g.host.conexion_ssh()
+        for archivo in g.archivos:
+            peso = ssh.du(g.ruta+'/'+archivo)
+            peso = int(str(peso).split('\t')[0])/1024
+            log = "%s: %s: %s [%s mb]" % (g.host, g, archivo, peso)
+            self.logger.info(log)
+
+            inicio = time()
+            sshpass = g.host._sshpass()
+            arg = "%s@%s:%s/%s" % (g.host.creds['user'], g.host.creds['ip'],
+                                   g.ruta, archivo)
+
+            sshpass.scp("-o Cipher=blowfish-cbc", arg, ruta_destino
+            fin = time()
+            delta = round(fin-inicio)+1
+            velocidad = peso/delta
+
+            self.logger.warn(log)
+
+        # agrega la vm al inventario destino
+
+        # enciende la vm
+
+        # quita la vm del inventario origen
+        # cambia el nombre de la carpeta de la vm en origen
 
 
 class Host:
@@ -123,6 +172,12 @@ class Guest:
     def __repr__(self):
         return "%s (%s)" % (self.name, self.__class__)
 
+    def estado(self):
+        esxi = self.host.conexion_viserver()
+        for path in esxi.get_registered_vms():
+            if esxi.get_vm_by_path(path).get_property('name') == self.name:
+                return esxi.get_vm_by_path(path).get_status()
+
     def tieneTools(self):
         esxi = self.host.conexion_viserver()
         for path in esxi.get_registered_vms():
@@ -141,11 +196,23 @@ class Guest:
                 else:
                     return 0
 
-    def reiniciar(self):
+    def iniciar(self, sync_run=False):
         esxi = self.host.conexion_viserver()
         for path in esxi.get_registered_vms():
             if esxi.get_vm_by_path(path).get_property('name') == self.name:
-                esxi.get_vm_by_path(path).reset()
+                esxi.get_vm_by_path(path).power_on(sync_run=sync_run)
+
+    def reiniciar(self, sync_run=False):
+        esxi = self.host.conexion_viserver()
+        for path in esxi.get_registered_vms():
+            if esxi.get_vm_by_path(path).get_property('name') == self.name:
+                esxi.get_vm_by_path(path).reset(sync_run=sync_run)
+
+    def apagar(self, sync_run=False):
+        esxi = self.host.conexion_viserver()
+        for path in esxi.get_registered_vms():
+            if esxi.get_vm_by_path(path).get_property('name') == self.name:
+                esxi.get_vm_by_path(path).power_off(sync_run=sync_run)
 
     def respaldar(self):
         self.logger.debug(self)
@@ -155,11 +222,14 @@ class Guest:
         self.host.fila_copia.procesar()
         self.host.fila_compresion.procesar()
 
-    def crearSnapshot(self, desc):
+    def crearSnapshot(self, desc, memory=False, sync_run=True, quiesce=True):
         esxi = self.host.conexion_viserver()
         for path in esxi.get_registered_vms():
             if self.name == esxi.get_vm_by_path(path).get_property('name'):
-                esxi.get_vm_by_path(path).create_snapshot(desc, sync_run=True)
+                esxi.get_vm_by_path(path).create_snapshot(desc,
+                                                          sync_run=sync_run,
+                                                          memory=memory,
+                                                          quiesce=quiesce)
 
     def borrarSnapshot(self, desc):
         esxi = self.host.conexion_viserver()
