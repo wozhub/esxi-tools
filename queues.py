@@ -48,14 +48,14 @@ class CopyQueue:
 
             if copia:
 
-                if copia.g.tieneSnapshots():
+                if copia.g.tieneSnapshots:
                     log = '%s: %s Ya tiene Snapshots!' % (copia.h, copia.g)
                     self.logger.error(log)
 
                     self.aCopiar.task_done()
 
                 else:
-                    if not copia.g.tieneTools():
+                    if not copia.g.tieneTools:
                         log = '%s: %s No tiene Vmware Tools!' % (copia.h,
                                                                  copia.g)
                         self.logger.warning(log)
