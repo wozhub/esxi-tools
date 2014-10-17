@@ -2,12 +2,12 @@
 
 from sh import sshpass
 from pysphere import VIServer
-from time import time
+from datetime import datetime, timedelta
+from time import sleep
 
 from queues import Copia, CopyQueue, CompressQueue
 from utiles import obtenerLogger
 
-from datetime import datetime, timedelta
 
 class Configuracion:
     def __init__(self, config):
@@ -35,71 +35,78 @@ class Administrador:
 
     def _configurarHosts(self, configurarGuests):
         self.logger.debug('')
-        self.hosts = []
+        self.hosts = {}
         for host in self.config.creds:
-            self.hosts.append(Host(self, host, configurarGuests))
+            self.hosts[host] = Host(self, host, configurarGuests)
 
         # instalo la key para conectarme sin password
-        for host in self.hosts:
+        for host in self.hosts.values():
             host.instalarDSA(self.config.dsa_key)
 
     def respaldar(self):
         self.logger.debug(self)
 
-        for h in self.hosts:
-            for g in h.guests:
+        for h in self.hosts.values():
+            for g in h.guests.values():
                 c = Copia(self, g)
                 h.fila_copia.cargar(c)
 
-        for h in self.hosts:
+        for h in self.hosts.values():
             h.fila_copia.procesar()
 
         self.fila_compresion.procesar()
 
-    def buscarGuest(self, nombre):
-        for h in self.hosts:
-            for g in h.guests:
-                if g.name == nombre:
-                    return g
-
     def buscarHost(self, nombre):
-        for h in self.hosts:
+        for h in self.hosts.values():
             if h.name == nombre:
                 return h
 
-    def migrar(self, nombre_vm, host_destino):
-        g_o = self.buscarGuest(nombre_vm)
-        h_o = g_o.host
-        h_d = self.buscarHost(host_destino)
+    def migrar(self, vm, origen, destino):
+        g_o = self.hosts[origen].guests[vm]
+        h_o = self.hosts[origen]
+        h_d = self.hosts[destino]
 
-        estado = g_o.estado()
+        estado = g_o.estado
         if estado == 'POWERED ON':  # apaga la vm en origen
+            self.logger.debug("%s esta encendida.", vm)
             g_o.apagar(sync_run=True)
 
-        ssh = h_o.conexion_ssh()
-        ssh.echo("'%s'" % h_o.config.dsa_key_priv, ">", "/tmp/identidad")
+        ssh_origen = h_o.conexion_ssh()
+        for linea in ssh_origen.vim_cmd("vmsvc/getallvms"):
+            if vm in linea:
+                id_o = linea.split()[0]
 
-        # copia los archivos
+        self.logger.debug("Copiando archivo de identidad dsa.")
+        ssh_origen.echo("'%s'" % h_o.config.dsa_key_priv, ">", "/tmp/identidad")
+        ssh_origen.chmod("700", "/tmp/identidad")
+
+        self.logger.debug("Copiando archivos de la vm.")
         arg = "%s@%s:%s" % (h_d.creds['user'], h_d.creds['ip'], g_o.ruta)
-        # print ssh.scp("-i /tmp/identidad", "-o UserKnownHostsFile=/dev/null",
-        #              "-o StrictHostKeyChecking=no", "-r", g_o.ruta, arg)
+        ssh_origen.scp("-i /tmp/identidad", "-o UserKnownHostsFile=/dev/null",
+                       "-o StrictHostKeyChecking=no", "-r", g_o.ruta, arg)
 
+        self.logger.debug("Agregando vm al inventario destino.")
         ssh_dest = h_d.conexion_ssh()
         for archivo in g_o.archivos:  # agrega la vm al inventario destino
             if ".vmx" in archivo:
                 vmx = "%s/%s" % (g_o.ruta, archivo)
-                print ssh_dest.vim_cmd("solo/registervm", vmx)
+                ssh_dest.vim_cmd("solo/registervm", vmx)
                 break
 
-        h_d._configurarGuests(self)  # vuelvo a buscar g en destino
-        g_d = self.buscarGuest(nombre_vm)
+        h_d._configurarGuests()  # vuelvo a buscar g en destino
+        g_d = self.hosts[destino].guests[vm]
 
         if estado == 'POWERED ON':  # enciende la vm en destino
-            g_d.apagar(sync_run=True)
+            self.logger.debug("Encendiendo la vm en el host destino.")
+            g_d.iniciar(sync_run=False)
+            sleep(2)
+            q = g_d.esxi.get_question()
+            q.answer(1)
 
-        # quita la vm del inventario origen
-
-        # cambia el nombre de la carpeta de la vm en origen
+        self.logger.debug("Quitando del inventario origen")
+        ssh_origen.vim_cmd("vmsvc/unregister", id_o)
+        self.logger.debug("Cambiando de nombre a la carpeta en origen")
+        ssh_origen.mv(g_o.ruta, g_o.ruta+"_migrada")
 
 
 class Host:
@@ -126,21 +133,19 @@ class Host:
         ssh.ln("-sf", "`which vim-cmd`", "/bin/vim_cmd")
         ssh.vim_cmd("hostsvc/firewall_enable_ruleset", "sshClient")
 
-
     def _configurarGuests(self):
         self.logger.debug(self)
-        self.guests = []
+        self.guests = {}
 
         for path in self.esxi.get_registered_vms():
             esxi = self.esxi.get_vm_by_path(path)
             vm = esxi.get_property('name')
             self.logger.debug("Encontre a %s en %s", vm, self)
-            self.guests.append(Guest(self, vm, esxi))
+            self.guests[vm] = Guest(self, vm, esxi)
 
     @property
     def esxi(self):
         if self._esxi_updated + timedelta(seconds=30) < datetime.now():
-            print "Reconectando"
             self._esxi_updated = datetime.now()
             self._esxi = self.conexion_viserver()
         return self._esxi
