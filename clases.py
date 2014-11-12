@@ -1,9 +1,10 @@
 #!/usr/bin/python
 
-from sh import sshpass
+from sh import sshpass, ssh
 from pysphere import VIServer
 from datetime import datetime, timedelta
 from time import sleep
+from IPython import embed
 
 from queues import Copia, CopyQueue, CompressQueue
 from utiles import obtenerLogger
@@ -61,6 +62,20 @@ class Administrador:
             if h.name == nombre:
                 return h
 
+    def iniciarGuest(self, guest, host=None):
+        if host is None:
+            for h in self.hosts.values():
+                g = h.buscarGuest(guest)
+                if g:
+                    g.iniciar(sync_run=True)
+                    return True
+        else:
+            h = self.buscarHost(host)
+            if h:
+                g = h.buscarGuest(guest)
+                if g:
+                    g.iniciar(sync_run=True)
+
     def migrar(self, vm, origen, destino):
         g_o = self.hosts[origen].guests[vm]
         h_o = self.hosts[origen]
@@ -82,7 +97,8 @@ class Administrador:
 
         self.logger.debug("Copiando archivos de la vm.")
         arg = "%s@%s:%s" % (h_d.creds['user'], h_d.creds['ip'], g_o.ruta)
-        ssh_origen.scp("-i /tmp/identidad", "-o UserKnownHostsFile=/dev/null",
+        #ssh_origen.scp("-i /tmp/identidad", "-o UserKnownHostsFile=/dev/null",
+        ssh_origen.scp("-i /tmp/identidad",
                        "-o StrictHostKeyChecking=no", "-r", g_o.ruta, arg)
 
         self.logger.debug("Agregando vm al inventario destino.")
@@ -100,8 +116,11 @@ class Administrador:
             self.logger.debug("Encendiendo la vm en el host destino.")
             g_d.iniciar(sync_run=False)
             sleep(2)
-            q = g_d.esxi.get_question()
-            q.answer(1)
+            pregunta = g_d.esxi.get_question()
+            for respuesta in pregunta.choices():
+                    if "moved" in respuesta[1]:
+                                break
+            pregunta.answer(respuesta[0])
 
         self.logger.debug("Quitando del inventario origen")
         ssh_origen.vim_cmd("vmsvc/unregister", id_o)
@@ -122,6 +141,8 @@ class Host:
         self.admin.filas_copia.append(self.fila_copia)
         self.fila_compresion = self.admin.fila_compresion
 
+        self.dsa_key = False
+
         # manejo el objeto pysphere
         self._esxi_updated = datetime.now()
         self._esxi = self.conexion_viserver()
@@ -131,7 +152,10 @@ class Host:
 
         ssh = self.conexion_ssh()
         ssh.ln("-sf", "`which vim-cmd`", "/bin/vim_cmd")
-        ssh.vim_cmd("hostsvc/firewall_enable_ruleset", "sshClient")
+        try:
+            ssh.vim_cmd("hostsvc/firewall_enable_ruleset", "sshClient")
+        except:
+            pass
 
     def _configurarGuests(self):
         self.logger.debug(self)
@@ -151,9 +175,12 @@ class Host:
         return self._esxi
 
     def __repr__(self):
-        return "%s (%s)" % (self.name, self.__class__)
+        return "%s (%s @ %s)" % (self.name, self.__class__, self.creds['ip'])
 
     def instalarDSA(self, dsa_key):
+        if self.dsa_key is True:
+            return
+
         version = self.esxi.get_api_version()
         ssh = self.conexion_ssh()
 
@@ -167,6 +194,13 @@ class Host:
 
         if "esxi-tools" not in ssh.cat(archivo):
             ssh.echo(dsa_key, ">>", archivo)
+
+        self.dsa_key = True
+
+    def buscarGuest(self, nombre):
+        for g in self.guests.values():
+            if g.name == nombre:
+                return g
 
     def respaldar(self):
         self.logger.debug(self)
@@ -190,10 +224,14 @@ class Host:
 
     def conexion_ssh(self):
         self.logger.debug(self)
-        sp = self._sshpass()
         login = self.creds['user']+"@"+self.creds['ip']
-        ssh = sp.bake("ssh", login)
-        return ssh
+
+        if self.dsa_key is False:
+            sp = self._sshpass()
+            conexion = sp.bake("ssh", login)
+        else:
+            conexion = ssh.bake(login)
+        return conexion
 
     def _sshpass(self):
         s = sshpass.bake("-p", self.creds['pw'])

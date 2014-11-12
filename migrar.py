@@ -5,5 +5,7 @@ from clases import Administrador
 from configuracion import config
 
 a = Administrador(config)
-#a.migrar('prueba', 'esxi2', 'esxi4')
-a.migrar('prueba', 'esxi4', 'esxi2')
+a.migrar('puppet', 'esxi3', 'esxi4')
+a.migrar('http-dev', 'esxi3', 'esxi2')
+a.migrar('cas', 'esxi3', 'esxi0')
+a.migrar('pampa', 'esxi1', 'esxi0')
