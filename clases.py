@@ -254,7 +254,12 @@ class Guest:
         self._esxi = esxi
 
     def __repr__(self):
-        return "%s (%s)" % (self.name, self.__class__)
+        ip =  self.esxi.get_property('ip_address')
+        if ip:
+            return "%s (%s) [%s] @ %s " % (self.name, self.__class__,
+                                           self.estado, ip)
+        else:
+            return "%s (%s) [%s] " % (self.name, self.__class__, self.estado)
 
     @property
     def esxi(self):
