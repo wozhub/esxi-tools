@@ -38,7 +38,13 @@ class Administrador:
         self.logger.debug('')
         self.hosts = {}
         for host in self.config.creds:
-            self.hosts[host] = Host(self, host, configurarGuests)
+            try:
+                h = Host(self, host, configurarGuests)
+            except:
+                print host
+                continue
+
+            self.hosts[host] = h
 
         # instalo la key para conectarme sin password
         for host in self.hosts.values():
