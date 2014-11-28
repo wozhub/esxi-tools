@@ -1,4 +1,5 @@
-configuracion.py
+configuracion.py 
+configuracion.*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
