@@ -82,6 +82,20 @@ class Administrador:
                 if g:
                     g.iniciar(sync_run=True)
 
+    def apagarGuest(self, guest, host=None):
+        if host is None:
+            for h in self.hosts.values():
+                g = h.buscarGuest(guest)
+                if g:
+                    g.apagar(sync_run=True)
+                    return True
+        else:
+            h = self.buscarHost(host)
+            if h:
+                g = h.buscarGuest(guest)
+                if g:
+                    g.apagar(sync_run=True)
+
     def migrar(self, vm, origen, destino):
         g_o = self.hosts[origen].guests[vm]
         h_o = self.hosts[origen]
