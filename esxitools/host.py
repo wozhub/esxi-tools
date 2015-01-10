@@ -24,7 +24,7 @@ class Host:
 
         # manejo el objeto ssh
         self._ssh_updated = datetime.now()
-        self._ssh = self._ssh()
+        self._ssh = self.conexion_ssh()
 
         # manejo el objeto pysphere
         self._esxi_updated = datetime.now()
@@ -56,7 +56,7 @@ class Host:
             try:
                 self.ssh.test()
             except:
-                self._ssh = self._ssh()
+                self._ssh = self.conexion_ssh()
             self._ssh_updated = datetime.now()
         return self._ssh
 
