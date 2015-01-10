@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from clases import Administrador
+from esxitools.administrador import Administrador
 from configuracion import config
 
 import argparse

@@ -1,11 +1,11 @@
 #!/usr/bin/python
+
 from Queue import Queue
 from threading import Thread
 from time import time
 from gzip import open as gzip
 from os import listdir
 from datetime import datetime
-
 
 from utiles import verificarDirectorio, borrarArchivo
 
