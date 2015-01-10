@@ -5,7 +5,7 @@ from pysphere import VIServer
 from datetime import datetime, timedelta
 
 from queues import Copia, CopyQueue
-
+from guest import Guest
 
 class Host:
     def __init__(self, admin, host, configurarGuests=True):
@@ -33,10 +33,9 @@ class Host:
         if configurarGuests:
             self._configurarGuests()
 
-        ssh = self.conexion_ssh()
-        ssh.ln("-sf", "`which vim-cmd`", "/bin/vim_cmd")
+        self.ssh.ln("-sf", "`which vim-cmd`", "/bin/vim_cmd")
         try:
-            ssh.vim_cmd("hostsvc/firewall_enable_ruleset", "sshClient")
+            self.ssh.vim_cmd("hostsvc/firewall_enable_ruleset", "sshClient")
         except:
             pass
 
@@ -52,7 +51,7 @@ class Host:
 
     @property
     def ssh(self):
-        if self._ssh_updated + timedelta(seconds=30) < datetime.now():
+        if self._ssh_updated + timedelta(seconds=60) < datetime.now():
             try:
                 self.ssh.test()
             except:
@@ -62,7 +61,7 @@ class Host:
 
     @property
     def esxi(self):
-        if self._esxi_updated + timedelta(seconds=30) < datetime.now():
+        if self._esxi_updated + timedelta(seconds=60) < datetime.now():
             try:
                 self.esxi.get_api_version()
             except:
@@ -78,18 +77,17 @@ class Host:
             return
 
         version = self.esxi.get_api_version()
-        ssh = self.conexion_ssh()
 
         if version in ["4.1", ]:  # Versiones anteriores a la 5
-            try: ssh.mkdir("~/.ssh")
+            try: self.ssh.mkdir("~/.ssh")
             except: pass
             archivo = "~/.ssh/authorized_keys"
-            ssh.touch(archivo)
+            self.ssh.touch(archivo)
         else:
             archivo = "/etc/ssh/keys-root/authorized_keys"
 
-        if "esxi-tools" not in ssh.cat(archivo):
-            ssh.echo(dsa_key, ">>", archivo)
+        if "esxi-tools" not in self.ssh.cat(archivo):
+            self.ssh.echo(dsa_key, ">>", archivo)
 
         self.dsa_key = True
 

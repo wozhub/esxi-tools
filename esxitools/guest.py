@@ -12,12 +12,14 @@ class Guest:
         self.logger.debug('Creando Guest (%s)', self.name)
         self.backup_folder = host.config.backup_folder + '/' + self.name
 
-        self._obtenerRuta()
-        self._obtenerArchivos()
-
         # manejo el objeto pysphere
         self._esxi_updated = datetime.now()
         self._esxi = esxi
+
+        self.ssh = self.host.ssh
+
+        self._obtenerRuta()
+        self._obtenerArchivos()
 
     def __repr__(self):
         ip = self.esxi.get_property('ip_address')
@@ -29,7 +31,7 @@ class Guest:
 
     @property
     def esxi(self):
-        if self._esxi_updated + timedelta(seconds=30) < datetime.now():
+        if self._esxi_updated + timedelta(seconds=60) < datetime.now():
             self._esxi_updated = datetime.now()
             self._esxi = self.host.esxi.get_vm_by_name(self.name)
         return self._esxi
@@ -72,9 +74,9 @@ class Guest:
         self.esxi.delete_named_snapshot(desc, sync_run=sync)
 
     def _obtenerArchivos(self):
+        self.logger.debug(self)
         archivos = []
-        ssh = self.host.conexion_ssh()
-        for archivo in ssh.ls(self.ruta).splitlines():
+        for archivo in self.ssh.ls(self.ruta).splitlines():
             if "~" in archivo or "vswp" in archivo \
                     or "lck" in archivo or "log" in archivo:
                 continue
@@ -82,16 +84,14 @@ class Guest:
         self.archivos = archivos
 
     def _obtenerRuta(self):
-        esxi = self.host.conexion_viserver()
-        for path in esxi.get_registered_vms():
-            if self.name == esxi.get_vm_by_path(path).get_property('name'):
-                r = ""
-                ruta = esxi.get_vm_by_path(path).get_property('path')
-                for palabra in ruta.split():
-                    if "datastore1" in palabra:
-                        r = "/vmfs/volumes/datastore1/"
-                    else:
-                        for carpeta in palabra.split('/'):
-                            if "vmx" not in carpeta:
-                                r += carpeta
+        self.logger.debug(self)
+        r = ""
+        ruta = self.esxi.get_property('path')
+        for palabra in ruta.split():
+            if "datastore1" in palabra:
+                r = "/vmfs/volumes/datastore1/"
+            else:
+                for carpeta in palabra.split('/'):
+                    if "vmx" not in carpeta:
+                        r += carpeta
         self.ruta = r
