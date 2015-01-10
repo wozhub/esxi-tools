@@ -163,6 +163,10 @@ class Host:
 
         self.dsa_key = False
 
+        # manejo el objeto ssh
+        self._ssh_updated = datetime.now()
+        self._ssh = self._ssh()
+
         # manejo el objeto pysphere
         self._esxi_updated = datetime.now()
         self._esxi = self.conexion_viserver()
@@ -188,10 +192,23 @@ class Host:
             self.guests[vm] = Guest(self, vm, esxi)
 
     @property
+    def ssh(self):
+        if self._ssh_updated + timedelta(seconds=30) < datetime.now():
+            try:
+                self.ssh.test()
+            except:
+                self._ssh = self._ssh()
+            self._ssh_updated = datetime.now()
+        return self._ssh
+
+    @property
     def esxi(self):
         if self._esxi_updated + timedelta(seconds=30) < datetime.now():
+            try:
+                self.esxi.get_api_version()
+            except:
+                self._esxi = self.conexion_viserver()
             self._esxi_updated = datetime.now()
-            self._esxi = self.conexion_viserver()
         return self._esxi
 
     def __repr__(self):

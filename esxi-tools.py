@@ -32,6 +32,7 @@ g.add_argument('--ver', action='store', choices=['hosts', 'guests'],
 g.add_argument('--iniciar', action='store_true',
                default=argparse.SUPPRESS,
                help='Iniciar Guest')
+
 g.add_argument('--apagar', action='store_true',
                default=argparse.SUPPRESS,
                help='Apagar Guest')
@@ -55,16 +56,16 @@ def main():
 
         a = Administrador(config)
 
-        if 'ver' in args:
+        if 'iniciar' in args:
+            a.iniciarGuest(args.guest, args.host)
+        elif 'apagar' in args:
+            a.apagarGuest(args.guest, args.host)
+        elif 'ver' in args:
             for h in a.hosts.values():
                 print h
                 if args.ver == "guests":
                     for g in h.guests.values():
                         print "\t", g
-        elif 'iniciar' in args:
-            a.iniciarGuest(args.guest, args.host)
-        elif 'apagar' in apagar:
-            a.apagarGuest(args.guest, args.host)
 
         if 'interactivo' in args:
             embed()
